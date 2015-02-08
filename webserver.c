@@ -212,9 +212,9 @@ int main(int argc, char *argv[]) {
     printf("\nMaking socket");
 
     /* make a server socket */
-    socket_fd=socket(AF_INET,SOCK_STREAM,0);
+    ;
 
-    if(socket_fd == SOCKET_ERROR) {
+    if( (socket_fd=socket(AF_INET,SOCK_STREAM,0)) == SOCKET_ERROR ) {
         fprintf(stderr, "\nCould not make a socket\n");
         exit(1);
     }
@@ -231,7 +231,7 @@ int main(int argc, char *argv[]) {
     }
 
     /* Listening to port */
-    if (0 > listen(socket_fd, threadNum)) {
+    if ( listen(socket_fd, threadNum) == SOCKET_ERROR ) {
         fprintf(stderr, "Server could not listen to port %d\n", portNum);
         exit(1);
     } else {
@@ -244,8 +244,7 @@ int main(int argc, char *argv[]) {
             while(is_empty() == 0) {
                 pthread_cond_wait (&bossCond, &mtx);
             }
-            client_socket_fd=accept(socket_fd,(struct sockaddr*)&client,(socklen_t *)&client_addr_len);
-            if(client_socket_fd == SOCKET_ERROR) {
+            if( (client_socket_fd=accept(socket_fd,(struct sockaddr*)&client,(socklen_t *)&client_addr_len)) == SOCKET_ERROR ){
                 fprintf(stderr, "Connection cannot be accepted\n");
             } else {
                 printf("\nGot a connection from %s on port %d\n", 

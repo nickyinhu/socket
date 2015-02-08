@@ -27,10 +27,10 @@ char *workLoad = "workload.txt";
 int writer_check = 0;
 int running_thread;
 /* Worker args =========================================================== */
-struct arg_struct {
+typedef struct thread_data {
     int each;
     int tid;
-};
+} arg_struct;
 
 /* Worker args =========================================================== */
 int debug_lvl;
@@ -84,13 +84,25 @@ int is_empty (void){
 }
 
 char* delete_from_list(void) {
-    struct linked_list *ptr = head;
     if(NULL == head)
         return NULL;
+    struct linked_list *ptr = head;
     char *val = head->val;
     ptr = head->next;
     head = ptr;
     return val;
+}
+
+int get_number() {
+    int list_num = 0;
+    if (NULL == head)
+        return list_num;
+    struct linked_list *ptr = head;
+    while(ptr != NULL){
+        list_num++;
+        ptr = ptr->next;
+    }
+    return list_num;
 }
 /* Usage ================================================================== */
 void print_usage() {
@@ -106,27 +118,29 @@ void print_usage() {
 }
 
 void *worker (void *threadarg) {
-    struct arg_struct *args = threadarg;
-    int each = args->each;
-    int tid = args->tid;
+    int each, tid;
+    arg_struct *args;
+    args = (arg_struct *) threadarg;
+    each = args->each;
+    tid = args->tid;
     int i;
     int work_done = 0;
-    if(debug_lvl == 1) { printf("DEBUG: Thread %d started\n", tid); }
+    if(debug_lvl == 1) { printf("DEBUG: Thread %d started, with %d jobs, %d jobs in the Q\n", tid, each, get_number()); }
     for(i = 0; i < each; i++) {
         char buffer[BUFFER_SIZE];
-        if(debug_lvl == 1) { printf("DEBUG: Thread %d locking\n", tid); }
+        if(debug_lvl == 1) { printf("DEBUG: Thread %d locking, %d jobs in market, %d jobs in the Q\n", tid, request, get_number()); }
         pthread_mutex_lock(&mtx);
             // writer_check = 0;
-            if(debug_lvl == 1) printf("DEBUG: Thread %d locked, request: %d, list is empty? : %d\n", tid, request, is_empty());
+            if(debug_lvl == 1) printf("DEBUG: Thread %d locked, request: %d, jobs in the Q: %d\n", tid, request, get_number());
             while( is_empty() == 1 ){                
                 if(request == 0){
                     running_thread--;
                     pthread_mutex_unlock(&mtx);
                     pthread_cond_signal(&bossCond);
-                    if(debug_lvl == 1) { printf("DEBUG: Thread %d closed, finished %d requests\n", tid, work_done); }
+                    if(debug_lvl == 1) { printf("DEBUG: Thread %d closed, finished %d requests, , %d jobs not requested\n", tid, work_done, (each - work_done)); }
                     return;
                 }
-                if(debug_lvl == 1) { printf("DEBUG: Thread %d waiting, current load: %d\n", tid, each); }
+                if(debug_lvl == 1) { printf("DEBUG: Thread %d waiting, current load: %d\n", tid, (each-i)); }
                 pthread_cond_wait (&workerCond, &mtx);
             }
             if(debug_lvl == 1) printf("DEBUG: Thread %d working\n", tid);
@@ -137,7 +151,7 @@ void *worker (void *threadarg) {
             strcpy (filename, read_name);
             if (filename[strlen(filename)-1] == '\n')
                 filename[strlen(filename)-1] = '\0';
-            if(debug_lvl == 1) { printf("DEBUG: Thread got %s!\n", filename); }
+            if(debug_lvl == 1) { printf("DEBUG: Thread %d got %s!\n", tid, filename); }
 
             struct sockaddr_in server_socket_addr;
 
@@ -185,7 +199,7 @@ void *worker (void *threadarg) {
                 exit(1);
             } 
 
-            if(debug_lvl == 1) { puts("DEBUG: received response"); }
+            if(debug_lvl == 1) { printf("DEBUG: received response: %s\n", response); }
             
             strtok(response, " ");
             char *status = strdup(strtok(NULL, " "));
@@ -223,12 +237,12 @@ void *worker (void *threadarg) {
             //fwrite(buffer, sizeof(char), len, received_file);
             remain_data -= len;
         }
-        if(debug_lvl == 1) { fprintf(stdout, "DEBUG: Thread %d received file %s in %d bytes\n", tid, filename, total); }
+        if(debug_lvl == 2) { fprintf(stdout, "DEBUG: Thread %d received file %s in %d bytes\n", tid, filename, total); }
         //fclose(received_file);
         /* Close the socket and return the response length (in bytes) */
         close(socket_fd);        
     }
-    if(debug_lvl == 0) { printf("DEBUG: Thread %d closed, finished %d requests\n", tid, work_done); }
+    if(debug_lvl == 1) { printf("DEBUG: Thread %d closed, finished %d requests\n", tid, work_done); }
     running_thread--;
     return;
 }
@@ -280,15 +294,15 @@ int main(int argc, char **argv) {
     pthread_t threads[threadNum]; 
     int i;
     for(i = 0; i < threadNum; i++) {
-        struct arg_struct args;
+        arg_struct *args_t = (arg_struct *)malloc(sizeof(arg_struct));
         int tid = i;
-        args.each = each;
-        args.tid = tid;
-        pthread_create(&threads[i],NULL,worker,(void *)&args);
+        args_t->each = each;
+        args_t->tid = tid;
+        pthread_create(&threads[i],NULL,worker,(void *)args_t);
         running_thread++;
     }
+    usleep(500);
     if(debug_lvl == 1) printf("DEBUG: each thread has %d jobs\n", each);
-    //usleep(1000);
 
     FILE *fr;
     char line[256];
@@ -307,17 +321,19 @@ int main(int argc, char **argv) {
         strcpy(files[file_number], line);
         file_number++;
     }
-
+    
     int index;
     for (index = 0; index < request; index++){
         int random = random_num(file_number - 1);
         add_to_list(files[random]);
     }
+    pthread_mutex_unlock(&mtx);
+
     if(debug_lvl == 1)
         puts("DEBUG: STARTING!!!");
 
     while( running_thread > 0 || request > 0 ){
-        if(debug_lvl == 1) { printf("DEBUG: Boss locking, request: %d, threads: %d\n", request, running_thread); }
+        if(debug_lvl == 2) { printf("DEBUG: Boss locking, request: %d, threads: %d\n", request, running_thread); }
         pthread_mutex_lock(&mtx);
             if(debug_lvl > 1) { puts("DEBUG: Boss unlocking and broadcasting"); }
         pthread_mutex_unlock(&mtx);
@@ -326,7 +342,8 @@ int main(int argc, char **argv) {
     }
 
     for(i = 0; i < threadNum; i++) { /* wait/join threads */
-        if(debug_lvl == 1) printf("Thread %d joined\n", i);
+        if(debug_lvl == 1) printf("Thread %d joined\n", i);        
+        pthread_cond_broadcast(&workerCond);
         pthread_join(threads[i], NULL);
     }
     exit(0);
