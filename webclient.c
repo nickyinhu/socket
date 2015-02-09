@@ -8,7 +8,7 @@
 #include <errno.h>
 #include <sys/socket.h>
 #include <pthread.h>
-#include <time.h>
+#include <sys/time.h>
 /* CONSTANTS ============================================================ */
 #define BUFFER_SIZE     1024
 #define SOCKET_ERROR    -1
@@ -147,7 +147,7 @@ void *worker (void *threadarg) {
             strcpy (filename, read_name);
             if (filename[strlen(filename)-1] == '\n')
                 filename[strlen(filename)-1] = '\0';
-            if(debug_lvl == 1) { printf("DEBUG: Thread %d got %s!\n", tid, filename); }
+            if(debug_lvl == 2) { printf("DEBUG: Thread %d got %s!\n", tid, filename); }
 
             struct sockaddr_in server_socket_addr;
 
@@ -159,10 +159,9 @@ void *worker (void *threadarg) {
             if ( (socket_fd = socket(AF_INET, SOCK_STREAM, 0)) == SOCKET_ERROR ) {
                 fprintf(stderr, "ERROR: client failed to create socket\n");
                 exit(1);
-            } 
+            }
 
             if(debug_lvl == 1) {  printf("DEBUG: client created socket\n"); }
-
 
             bzero(&server_socket_addr, sizeof(server_socket_addr));
             server_socket_addr.sin_family = AF_INET;
@@ -211,12 +210,10 @@ void *worker (void *threadarg) {
 
             /* GetFile response */
             if(debug_lvl == 1) { printf("status:%s, bytes: %s\n", status, size); }
-
             
         pthread_mutex_unlock(&mtx);
         if(debug_lvl == 2) { printf("DEBUG: Thread %d unlocked\n", tid); }
         pthread_cond_signal(&bossCond);
-
 
         if(strcmp(status, "OK") != 0){
             fprintf(stderr, "ERROR: Received bad response!!!\n");
@@ -238,6 +235,7 @@ void *worker (void *threadarg) {
                 exit(EXIT_FAILURE);
             }
         }
+
         while (((len = recv(socket_fd, buffer, BUFFER_SIZE, 0)) > 0) && (remain_data > 0)) {
             total += len;
             if(received_file != NULL) {
@@ -245,12 +243,11 @@ void *worker (void *threadarg) {
             }
             remain_data -= len;
         }
-        if(debug_lvl == 1) { fprintf(stdout, "DEBUG: Thread %d received file %s in %d bytes\n", tid, filename, total); }
+        if(debug_lvl == 1 || debug_lvl == 2 ) { fprintf(stdout, "DEBUG: Thread %d received file %s in %d bytes\n", tid, filename, total); }
         if (received_file != NULL) 
             fclose(received_file);
         /* Close the socket and return the response length (in bytes) */
         close(socket_fd);
-
             
         gettimeofday(&end, NULL);
 
@@ -269,7 +266,6 @@ void *worker (void *threadarg) {
     pthread_mutex_lock(&mtx);
     running_thread--;
     pthread_mutex_unlock(&mtx);
-    return;
 }
 
 /* random number generator ================================================ */
@@ -373,14 +369,15 @@ int main(int argc, char **argv) {
         files[file_number] = malloc(sizeof(line)+1);
         strcpy(files[file_number], line);
         file_number++;
-        if(debug_lvl == 2) printf("DEBUG: File name%s\n", line);
+        if(debug_lvl == 2) printf("DEBUG: File name read from file: %s\n", line);
     }
-    if(debug_lvl == 1) printf("DEBUG: Total file number%d\n", file_number);
+    if(debug_lvl == 1) printf("DEBUG: Total file number: %d\n", file_number);
     pthread_mutex_lock(&mtx);
     int index;
     for (index = 0; index < request; index++){
         int random = random_num(file_number - 1);
         add_to_list(files[random]);
+        if(debug_lvl == 2) printf("DEBUG: File name put into request queue: %s\n", files[random]);
     }
     pthread_mutex_unlock(&mtx);
 
@@ -391,10 +388,10 @@ int main(int argc, char **argv) {
     while( running_thread > 0 || request > 0 ){
         if(debug_lvl == 1) { printf("DEBUG: Boss locking, request: %d, threads: %d\n", request, running_thread); }
         pthread_mutex_lock(&mtx);
-            if(debug_lvl > 1) { puts("DEBUG: Boss unlocking and broadcasting"); }
+            if(debug_lvl == 3) { puts("DEBUG: Boss unlocking and broadcasting"); }
         pthread_mutex_unlock(&mtx);
         pthread_cond_broadcast(&workerCond);
-        if(debug_lvl > 1){ puts("DEBUG: Boss unlocked"); }
+        if(debug_lvl == 3){ puts("DEBUG: Boss unlocked"); }
     }
 
     /* wait/join threads */
@@ -403,7 +400,6 @@ int main(int argc, char **argv) {
         pthread_cond_broadcast(&workerCond);
         pthread_join(threads[i], NULL);
     }
-
 
     FILE *metrics_file;
     metrics_file = fopen(metrics_path, "w");

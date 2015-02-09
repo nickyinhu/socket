@@ -155,7 +155,6 @@ void *worker(void *threadarg){
             sprintf(status, "GetFile OK %d",(int)stat_buf.st_size);
             write(client_socket_fd, status, sizeof(status)+1);
 
-            char buffer[1024] = "";
             int remain_data = (int)stat_buf.st_size;
             int sent_bytes = 0;
             int total = 0;
@@ -200,7 +199,6 @@ int main(int argc, char *argv[]) {
     pthread_t threads[threadNum]; 
     int i;   
     for(i = 0; i < threadNum; i++) {
-        int t = i;
         pthread_create(&threads[i],NULL,worker,NULL);
     }
 
