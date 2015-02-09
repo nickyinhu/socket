@@ -14,17 +14,19 @@
 #include <sys/sendfile.h>
 #include <fcntl.h>
 #include <errno.h>
-
+/* CONSTANTS ============================================================ */
 #define SOCKET_ERROR    -1
 #define BUFFER_SIZE     1024
 
-
+/* pthread var ========================================================== */
 pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t bossCond = PTHREAD_COND_INITIALIZER;
 pthread_cond_t workerCond = PTHREAD_COND_INITIALIZER;
-
+/* Options =============================================================== */
 char *filePath = ".";
-
+int portNum = 8888;
+int threadNum = 1;
+/* Linked list constructor =============================================== */
 struct linked_list {
     int val;
     struct linked_list *next;
@@ -118,7 +120,7 @@ void *worker(void *threadarg){
 
         received = recv(client_socket_fd, request, sizeof(request), 0);
         if (received == -1) {
-            fprintf(stderr, "recv failed: %s\n", strerror(errno));
+            fprintf(stderr, "ERROR: recv failed: %s\n", strerror(errno));
             exit(1);
         }
         printf("%s\n", request);
@@ -135,7 +137,7 @@ void *worker(void *threadarg){
         char * filename = malloc(snprintf(NULL, 0, "%s %s", temp_name, filePath) + 1);
         sprintf(filename, "%s%s", filePath, temp_name);
 
-        printf("received request to send file %s\n", filename);
+        printf("INFO: received request to send file %s\n", filename);
 
         /* open the file to be sent */
         int fd = open(filename, O_RDONLY);
@@ -144,12 +146,13 @@ void *worker(void *threadarg){
         if (fd == -1) {
             snprintf(status, sizeof(status), "GetFile FILE_NOT_FOUND 0 0");
             write(client_socket_fd, status, sizeof(status)+1);
-            fprintf(stderr, "Cannot open requested file %s\n", filename);
-            fprintf(stderr, "Closing the socket\n");
+            fprintf(stderr, "ERROR: Cannot open requested file %s\n", filename);
+            fprintf(stderr, "ERROR: Closing the socket\n");
         } else {
             /* get the size of the file to be sent */
             fstat(fd, &stat_buf); 
-            snprintf(status, sizeof(status), "GetFile OK %d",(int)stat_buf.st_size);
+
+            sprintf(status, "GetFile OK %d",(int)stat_buf.st_size);
             write(client_socket_fd, status, sizeof(status)+1);
 
             char buffer[1024] = "";
@@ -162,29 +165,30 @@ void *worker(void *threadarg){
                 //fprintf(stdout, "Server has sent %d bytes from file's data, remaining data = %d\n", total, remain_data);
             }
             /* close socket */
-            printf("\nsent %d bytes, Closing the socket\n", total);
+            printf("INFO: Sent %d bytes, Closing the socket\n", total);
         }
         if(close(client_socket_fd) == SOCKET_ERROR)  {
-            printf("\nCould not close socket\n");
+            printf("INFO: Could not close socket\n");
             exit(1);
         }
     }          
 }
 
 int main(int argc, char *argv[]) {
-    printf("Hello, I am the web server\n");
+    printf("===== Hello, I am the web server =====\n");
     int option = 0;
-    int portNum = 8888, threadNum = 1;
     while ((option = getopt(argc, argv,"hp:t:f:")) != -1) {
         switch (option) {
             case 'p': portNum = atoi(optarg);
-                printf ("Port number is '%s'\n", optarg);
+                printf ("ARG: Port number is '%s'\n", optarg);
                 break;
-            case 't' : threadNum = atoi(optarg);
-                printf ("Thread number is '%s'\n", optarg);
+            case 't' : threadNum = atoi(optarg);            
+                threadNum = threadNum > 100 ? 100 : threadNum;
+                threadNum = threadNum < 1 ? 1 : threadNum;
+                printf ("ARG: Thread number is '%d'\n", threadNum);
                 break;
             case 'f' : filePath = optarg;
-                printf ("File path is '%s'\n", optarg);
+                printf ("ARG: File path is '%s'\n", optarg);
                 break;
             case 'h': print_usage();
                 exit (0);
@@ -208,14 +212,14 @@ int main(int argc, char *argv[]) {
 
     int client_socket_fd;
 
-    printf("\nStarting server");
-    printf("\nMaking socket");
+    printf("INFO: Starting server");
+    printf("INFO: Making socket");
 
     /* make a server socket */
     ;
 
     if( (socket_fd=socket(AF_INET,SOCK_STREAM,0)) == SOCKET_ERROR ) {
-        fprintf(stderr, "\nCould not make a socket\n");
+        fprintf(stderr, "ERROR: Could not make a socket\n");
         exit(1);
     }
 
@@ -224,30 +228,30 @@ int main(int argc, char *argv[]) {
     server.sin_family=AF_INET;
 
     /* Binding to port */
-    printf("\nBinding to port %d\n",portNum);
+    printf("INFO: Binding to port %d\n",portNum);
     if(bind(socket_fd,(struct sockaddr*)&server,sizeof(server)) == SOCKET_ERROR) {
-        fprintf(stderr, "\nCould not connect to host\n");
+        fprintf(stderr, "ERROR: Could not connect to host\n");
         exit(1);
     }
 
     /* Listening to port */
     if ( listen(socket_fd, threadNum) == SOCKET_ERROR ) {
-        fprintf(stderr, "Server could not listen to port %d\n", portNum);
+        fprintf(stderr, "ERROR: Server could not listen to port %d\n", portNum);
         exit(1);
     } else {
-        printf("server listening for a connection on port %d\n", portNum);
+        printf("INFO: server listening for a connection on port %d\n", portNum);
     }
 
     while (1){
         pthread_mutex_lock(&mtx);
-            printf("\nWaiting for a connection\n");
+            printf("INFO: Waiting for a connection\n");
             while(is_empty() == 0) {
                 pthread_cond_wait (&bossCond, &mtx);
             }
             if( (client_socket_fd=accept(socket_fd,(struct sockaddr*)&client,(socklen_t *)&client_addr_len)) == SOCKET_ERROR ){
-                fprintf(stderr, "Connection cannot be accepted\n");
+                fprintf(stderr, "ERROR: Connection cannot be accepted\n");
             } else {
-                printf("\nGot a connection from %s on port %d\n", 
+                printf("INFO: Got a connection from %s on port %d\n", 
                     inet_ntoa(client.sin_addr), htons(client.sin_port));
             }
             add_to_list(client_socket_fd);
