@@ -123,12 +123,14 @@ void *worker(void *threadarg){
             fprintf(stderr, "ERROR: recv failed: %s\n", strerror(errno));
             exit(1);
         }
-        printf("%s\n", request);
-        char temp_name[25];
-        memcpy( temp_name, &request[12], sizeof(temp_name));
+        printf("INFO: %s\n", request);
+
+        char *temp_name = malloc(sizeof(temp_name));
+        strtok(request, " ");
+        strtok(NULL, " ");
+        temp_name = strdup(strtok(NULL, " "));
 
         /* null terminate and strip any \r and \n from temp_name */
-        temp_name[received] = '\0';
         if (temp_name[strlen(temp_name)-1] == '\n')
             temp_name[strlen(temp_name)-1] = '\0';
         if (temp_name[strlen(temp_name)-1] == '\r')
@@ -166,6 +168,7 @@ void *worker(void *threadarg){
             /* close socket */
             printf("INFO: Sent %d bytes, Closing the socket\n", total);
         }
+        close(fd);
         if(close(client_socket_fd) == SOCKET_ERROR)  {
             printf("INFO: Could not close socket\n");
             exit(1);
@@ -210,8 +213,8 @@ int main(int argc, char *argv[]) {
 
     int client_socket_fd;
 
-    printf("INFO: Starting server");
-    printf("INFO: Making socket");
+    printf("INFO: Starting server\n");
+    printf("INFO: Making socket\n");
 
     /* make a server socket */
     ;

@@ -121,7 +121,7 @@ void *worker (void *threadarg) {
     tid = args->tid;
     int i;
     int work_done = 0;
-    if(debug_lvl == 1) { printf("DEBUG: Thread %d started, with %d jobs, %d jobs in the Q\n", tid, each, get_number()); }
+    if(debug_lvl == 1) { printf("DEBUG: Thread %d initialized, with %d jobs, %d jobs in the Q\n", tid, each, get_number()); }
     for(i = 0; i < each; i++) {
         char buffer[BUFFER_SIZE];
         if(debug_lvl == 1) { printf("DEBUG: Thread %d locking, %d jobs in market, %d jobs in the Q\n", tid, request, get_number()); }
@@ -228,7 +228,7 @@ void *worker (void *threadarg) {
         FILE *received_file;
         if(debug_lvl == 1) { printf("DEBUG: Thread %d receiving data\n", tid); }
         if(download_path != NULL) {
-            sprintf(open_name, "%s%s", download_path, filename);
+            sprintf(open_name, "%d_%s%s", get_number(), download_path, filename);
             received_file = fopen(open_name, "w");
             if (received_file == NULL) {
                 fprintf(stderr, "ERROR: Failed to open file: %s --> %s\n", open_name, strerror(errno));
@@ -248,7 +248,7 @@ void *worker (void *threadarg) {
             fclose(received_file);
         /* Close the socket and return the response length (in bytes) */
         close(socket_fd);
-            
+        /* Record end time for response */
         gettimeofday(&end, NULL);
 
         seconds  = end.tv_sec  - start.tv_sec;
@@ -384,6 +384,11 @@ int main(int argc, char **argv) {
     if(debug_lvl == 1)
         puts("DEBUG: STARTING!!!");
 
+    struct timeval e_start, e_end;
+    long e_time, e_seconds, e_useconds;
+    /* Record start point for elapsed time */
+    gettimeofday(&e_start, NULL);
+
     /* Threads wake up */
     while( running_thread > 0 || request > 0 ){
         if(debug_lvl == 1) { printf("DEBUG: Boss locking, request: %d, threads: %d\n", request, running_thread); }
@@ -400,12 +405,33 @@ int main(int argc, char **argv) {
         pthread_cond_broadcast(&workerCond);
         pthread_join(threads[i], NULL);
     }
+    gettimeofday(&e_end, NULL);
+
+    e_seconds  = e_end.tv_sec  - e_start.tv_sec;
+    e_useconds = e_end.tv_usec - e_start.tv_usec;
+
+    e_time = ((e_seconds) * 1000 + e_useconds/1000.0) + 0.5;
+    if(debug_lvl == 4){ printf("DEBUG: Total elapsed time is: %ld\n", e_time); }
 
     FILE *metrics_file;
     metrics_file = fopen(metrics_path, "w");
+
     char *metrics_content = malloc(sizeof(metrics_content));
 
-    sprintf(metrics_content, "Webclient stats report:\n\tTotal bytes received\t%ld B\n\tAverage response time\t%f S\n\tAverage troughput   \t%.1f B/S", total_bytes, (double)total_time/(total_request*1000), (double)total_bytes*1000/total_time);
+    sprintf(metrics_content, "\
+        Webclient stats report:\n\
+        \tTotal bytes received\t%ld B\n\
+        \tAverage response time\t%f S\n\
+        \tElapsed time:    \t%.1fS\n\
+        \tAverage troughput   \t%.1f B/S\n\
+        \tTotal requests  \t%d\n\
+        \tRequest per second \t%.1f\n",
+        total_bytes, 
+        (double)total_time/(total_request*1000), 
+        (double)e_time/1000, 
+        (double)total_bytes*1000/e_time, 
+        total_request,
+        (double)total_request*1000/e_time);
     printf("\n%s\n", metrics_content);
     fputs(metrics_content, metrics_file);
 
