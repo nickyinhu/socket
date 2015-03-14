@@ -112,6 +112,17 @@ int get_number() {
     return list_num;
 }
 
+/* random number generator ================================================ */
+int random_num(int limit) {
+    int divisor = RAND_MAX/(limit+1);
+    int result;
+    do { 
+        result = rand() / divisor;
+    } while (result > limit);
+
+    return result;
+}
+
 /* Worker =========================================================== */
 void *worker (void *threadarg) {
     int each, tid;
@@ -121,95 +132,96 @@ void *worker (void *threadarg) {
     tid = args->tid;
     int i;
     int work_done = 0;
-    if(debug_lvl == 1) { printf("DEBUG: Thread %d initialized, with %d jobs, %d jobs in the Q\n", tid, each, get_number()); }
+    if(debug_lvl == 2) { printf("DEBUG: Thread %d initialized, with %d jobs, %d jobs in the Q\n", tid, each, get_number()); }
     for(i = 0; i < each; i++) {
         char buffer[BUFFER_SIZE];
-        if(debug_lvl == 1) { printf("DEBUG: Thread %d locking, %d jobs in market, %d jobs in the Q\n", tid, request, get_number()); }
+        if(debug_lvl == 2) { printf("DEBUG: Thread %d locking, %d jobs in market, %d jobs in the Q\n", tid, request, get_number()); }
         pthread_mutex_lock(&mtx);
             // writer_check = 0;
-            if(debug_lvl == 1) printf("DEBUG: Thread %d locked, request: %d, jobs in the Q: %d\n", tid, request, get_number());
-            while( is_empty() == 1 ){                
-                if(request == 0){
-                    running_thread--;
-                    pthread_mutex_unlock(&mtx);
-                    pthread_cond_signal(&bossCond);
-                    if(debug_lvl == 1) { printf("DEBUG: Thread %d closed, finished %d requests, , %d jobs not requested\n", tid, work_done, (each - work_done)); }
-                    return;
-                }
-                if(debug_lvl == 1) { printf("DEBUG: Thread %d waiting, current load: %d\n", tid, (each-i)); }
-                pthread_cond_wait (&workerCond, &mtx);
+        if(debug_lvl == 2) printf("DEBUG: Thread %d locked, request: %d, jobs in the Q: %d\n", tid, request, get_number());
+        while( is_empty() == 1 ){
+            if(request == 0){
+                running_thread--;
+                pthread_mutex_unlock(&mtx);
+                pthread_cond_signal(&bossCond);
+                if(debug_lvl == 2) { printf("DEBUG: Thread %d closed, finished %d requests, %d jobs not requested\n", tid, work_done, (each - work_done)); }
+                return;
             }
-            if(debug_lvl == 1) printf("DEBUG: Thread %d working\n", tid);
-            request--;
-            work_done++;
-            char *filename = malloc(50);
-            char *read_name = delete_from_list();
-            strcpy (filename, read_name);
-            if (filename[strlen(filename)-1] == '\n')
-                filename[strlen(filename)-1] = '\0';
-            if(debug_lvl == 2) { printf("DEBUG: Thread %d got %s!\n", tid, filename); }
+            if(debug_lvl == 2) { printf("DEBUG: Thread %d waiting, current load: %d\n", tid, (each-i)); }
+            pthread_cond_wait (&workerCond, &mtx);
+        }
 
-            struct sockaddr_in server_socket_addr;
+        if(debug_lvl == 1) printf("DEBUG: Thread %d working, %d jobs in market\n", tid, get_number());
 
-            if(debug_lvl == 1) { printf("Host name : %s\n", he->h_name); }
+        request--;
+        work_done++;
+        char *filename = malloc(50);
+        char *read_name = delete_from_list();
+        strcpy (filename, read_name);
+        if (filename[strlen(filename)-1] == '\n')
+            filename[strlen(filename)-1] = '\0';
+        if(debug_lvl == 2) { printf("DEBUG: Thread %d got %s!\n", tid, filename); }
 
-            unsigned long server_addr_nbo = *(unsigned long *)(he->h_addr_list[0]);
+        struct sockaddr_in server_socket_addr;
 
-            int socket_fd;
-            if ( (socket_fd = socket(AF_INET, SOCK_STREAM, 0)) == SOCKET_ERROR ) {
-                fprintf(stderr, "ERROR: client failed to create socket\n");
-                exit(1);
-            }
+        if(debug_lvl == 3) { printf("Host name : %s\n", he->h_name); }
 
-            if(debug_lvl == 1) {  printf("DEBUG: client created socket\n"); }
+        unsigned long server_addr_nbo = *(unsigned long *)(he->h_addr_list[0]);
 
-            bzero(&server_socket_addr, sizeof(server_socket_addr));
-            server_socket_addr.sin_family = AF_INET;
-            server_socket_addr.sin_port = htons(portNum);
-            server_socket_addr.sin_addr.s_addr = server_addr_nbo;
+        int socket_fd;
+        if ( (socket_fd = socket(AF_INET, SOCK_STREAM, 0)) == SOCKET_ERROR ) {
+            fprintf(stderr, "ERROR: client failed to create socket\n");
+            exit(1);
+        }
 
-            struct timeval start, end;
+        if(debug_lvl == 3) {  printf("DEBUG: client created socket\n"); }
 
-            long mtime, seconds, useconds;    
+        bzero(&server_socket_addr, sizeof(server_socket_addr));
+        server_socket_addr.sin_family = AF_INET;
+        server_socket_addr.sin_port = htons(portNum);
+        server_socket_addr.sin_addr.s_addr = server_addr_nbo;
 
-            gettimeofday(&start, NULL);
+        struct timeval start, end;
 
-            if ( connect(socket_fd, (struct sockaddr *)&server_socket_addr, sizeof(server_socket_addr)) == SOCKET_ERROR) {
-                fprintf(stderr, "ERROR: client failed to connect to server!\n");
-                close(socket_fd);
-                exit(1);
-            } 
+        long mtime, seconds, useconds;
+        gettimeofday(&start, NULL);
 
-            if(debug_lvl == 1) { fprintf(stdout, "INFO: client connected to to server!\n"); }
+        if ( connect(socket_fd, (struct sockaddr *)&server_socket_addr, sizeof(server_socket_addr)) == SOCKET_ERROR) {
+            fprintf(stderr, "ERROR: client failed to connect to server!\n");
+            close(socket_fd);
+            exit(1);
+        }
 
-            char fullname[50];
-            sprintf(fullname, "%s%s", "GetFile Get ", filename);
+        if(debug_lvl == 3) { fprintf(stdout, "INFO: client connected to to server!\n"); }
 
-            if(debug_lvl == 1) { printf("DEBUG: Request is %s\n", fullname); }
+        char fullname[50];
+        sprintf(fullname, "%s%s", "GetFile Get ", filename);
 
-            if (send(socket_fd, fullname, sizeof(fullname), 0) == SOCKET_ERROR) {
-                fprintf(stderr, "ERROR: client failed to send %s\n", filename);
-                close(socket_fd);
-                exit(1);
-            } 
+        if(debug_lvl == 1) { printf("DEBUG: Request is %s\n", fullname); }
 
-            if(debug_lvl == 1) {  puts("DEBUG: Sent requests"); }
+        if (send(socket_fd, fullname, sizeof(fullname), 0) == SOCKET_ERROR) {
+            fprintf(stderr, "ERROR: client failed to send %s\n", filename);
+            close(socket_fd);
+            exit(1);
+        }
 
-            char response[100];
-            if(read(socket_fd, response, sizeof(response)+1) == SOCKET_ERROR){
-                fprintf(stderr, "ERROR: client failed to read message\n");
-                exit(1);
-            } 
+        if(debug_lvl == 3) {  puts("DEBUG: Sent requests"); }
 
-            if(debug_lvl == 1) { printf("DEBUG: received response: %s\n", response); }
-            
-            strtok(response, " ");
-            char *status = strdup(strtok(NULL, " "));
-            char *size = strdup(strtok(NULL, " "));
-            int file_size = atoi(size);
+        char response[100];
+        if(read(socket_fd, response, sizeof(response)+1) == SOCKET_ERROR){
+            fprintf(stderr, "ERROR: client failed to read message\n");
+            exit(1);
+        }
 
-            /* GetFile response */
-            if(debug_lvl == 1) { printf("status:%s, bytes: %s\n", status, size); }
+        if(debug_lvl == 3) { printf("DEBUG: received response: %s\n", response); }
+        
+        strtok(response, " ");
+        char *status = strdup(strtok(NULL, " "));
+        char *size = strdup(strtok(NULL, " "));
+        int file_size = atoi(size);
+
+        /* GetFile response */
+        if(debug_lvl == 3) { printf("status:%s, bytes: %s\n", status, size); }
             
         pthread_mutex_unlock(&mtx);
         if(debug_lvl == 2) { printf("DEBUG: Thread %d unlocked\n", tid); }
@@ -226,13 +238,13 @@ void *worker (void *threadarg) {
         int total = 0;
         char open_name[50];
         FILE *received_file;
-        if(debug_lvl == 1) { printf("DEBUG: Thread %d receiving data\n", tid); }
+        if(debug_lvl == 2) { printf("DEBUG: Thread %d receiving data\n", tid); }
         if(download_path != NULL) {
-            sprintf(open_name, "%d_%s%s", get_number(), download_path, filename);
+            sprintf(open_name, "%s%s", download_path, filename);
             received_file = fopen(open_name, "w");
             if (received_file == NULL) {
                 fprintf(stderr, "ERROR: Failed to open file: %s --> %s\n", open_name, strerror(errno));
-                exit(EXIT_FAILURE);
+                exit(1);
             }
         }
 
@@ -243,9 +255,13 @@ void *worker (void *threadarg) {
             }
             remain_data -= len;
         }
-        if(debug_lvl == 1 || debug_lvl == 2 ) { fprintf(stdout, "DEBUG: Thread %d received file %s in %d bytes\n", tid, filename, total); }
-        if (received_file != NULL) 
-            fclose(received_file);
+        if(debug_lvl == 1 || debug_lvl == 2 ) { fprintf(stdout, "DEBUG: Thread %d received file %s in %d bytes\n", tid, open_name, total); }
+        if (download_path != NULL) {
+            if(debug_lvl == 1 || debug_lvl == 2 ) { fprintf(stdout, "DEBUG: Thread %d closing file %s\n", tid, open_name); }
+            if(fclose(received_file) != 0 ){
+                fprintf(stderr, "ERROR: Failed to close file: %s --> %s\n", open_name, strerror(errno));
+            }
+        }
         /* Close the socket and return the response length (in bytes) */
         close(socket_fd);
         /* Record end time for response */
@@ -268,16 +284,6 @@ void *worker (void *threadarg) {
     pthread_mutex_unlock(&mtx);
 }
 
-/* random number generator ================================================ */
-int random_num(int limit) {
-    int divisor = RAND_MAX/(limit+1);
-    int result;
-    do { 
-        result = rand() / divisor;
-    } while (result > limit);
-
-    return result;
-}
 
 /* Usage ================================================================== */
 void print_usage() {
@@ -329,7 +335,7 @@ int main(int argc, char **argv) {
                 exit (0);
             default: print_usage();
         }
-    }    
+    }
 
     he = gethostbyname(sHostAddress);
 
@@ -355,7 +361,7 @@ int main(int argc, char **argv) {
     fr = fopen (workLoad, "rt");
     if (fr == NULL) {
         fprintf(stderr, "ERROR: Failed to open file: %s --> %s\n", workLoad, strerror(errno));
-        exit(EXIT_FAILURE);
+        exit(1);
     }
     if(debug_lvl == 1) printf("DEBUG: Opened workload file %s\n", workLoad);
     /* Workload generation */
@@ -374,10 +380,13 @@ int main(int argc, char **argv) {
     if(debug_lvl == 1) printf("DEBUG: Total file number: %d\n", file_number);
     pthread_mutex_lock(&mtx);
     int index;
+    int file_index = 0;
     for (index = 0; index < request; index++){
-        int random = random_num(file_number - 1);
-        add_to_list(files[random]);
-        if(debug_lvl == 2) printf("DEBUG: File name put into request queue: %s\n", files[random]);
+        add_to_list(files[file_index]);
+        if(debug_lvl == 2) printf("DEBUG: File name put into request queue: %s\n", files[file_index]);        
+        if(file_index >= (file_number - 1) )
+            file_index = 0;
+        file_index++;
     }
     pthread_mutex_unlock(&mtx);
 
@@ -391,7 +400,7 @@ int main(int argc, char **argv) {
 
     /* Threads wake up */
     while( running_thread > 0 || request > 0 ){
-        if(debug_lvl == 1) { printf("DEBUG: Boss locking, request: %d, threads: %d\n", request, running_thread); }
+        if(debug_lvl == 3) { printf("DEBUG: Boss locking, request: %d, threads: %d\n", request, running_thread); }
         pthread_mutex_lock(&mtx);
             if(debug_lvl == 3) { puts("DEBUG: Boss unlocking and broadcasting"); }
         pthread_mutex_unlock(&mtx);
@@ -401,7 +410,7 @@ int main(int argc, char **argv) {
 
     /* wait/join threads */
     for(i = 0; i < threadNum; i++) { 
-        if(debug_lvl == 1) printf("Thread %d joined\n", i + 1 );        
+        if(debug_lvl == 3) printf("Thread %d joined\n", i + 1 );        
         pthread_cond_broadcast(&workerCond);
         pthread_join(threads[i], NULL);
     }
@@ -420,12 +429,12 @@ int main(int argc, char **argv) {
 
     sprintf(metrics_content, "\
         Webclient stats report:\n\
-        \tTotal bytes received\t%ld B\n\
+        \tTotal bytes received\t%ld Bytes\n\
         \tAverage response time\t%f S\n\
-        \tElapsed time:    \t%.1fS\n\
-        \tAverage troughput   \t%.1f B/S\n\
+        \tElapsed time:    \t%.1f S\n\
+        \tAverage troughput   \t%.1f Bytes/S\n\
         \tTotal requests  \t%d\n\
-        \tRequest per second \t%.1f\n",
+        \tRequest per second \t%.1f Req/S\n",
         total_bytes, 
         (double)total_time/(total_request*1000), 
         (double)e_time/1000, 

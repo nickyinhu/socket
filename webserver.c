@@ -136,7 +136,7 @@ void *worker(void *threadarg){
         if (temp_name[strlen(temp_name)-1] == '\r')
             temp_name[strlen(temp_name)-1] = '\0';
 
-        char * filename = malloc(snprintf(NULL, 0, "%s %s", temp_name, filePath) + 1);
+        char * filename = malloc(snprintf(NULL, 0, "%s%s", filePath, temp_name) + 1);
         sprintf(filename, "%s%s", filePath, temp_name);
 
         printf("INFO: received request to send file %s\n", filename);
@@ -252,8 +252,7 @@ int main(int argc, char *argv[]) {
             if( (client_socket_fd=accept(socket_fd,(struct sockaddr*)&client,(socklen_t *)&client_addr_len)) == SOCKET_ERROR ){
                 fprintf(stderr, "ERROR: Connection cannot be accepted\n");
             } else {
-                printf("INFO: Got a connection from %s on port %d\n", 
-                    inet_ntoa(client.sin_addr), htons(client.sin_port));
+                printf("INFO: Got a connection from %s on port %d\n", inet_ntoa(client.sin_addr), htons(client.sin_port));
             }
             add_to_list(client_socket_fd);
         pthread_mutex_unlock(&mtx);
